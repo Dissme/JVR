@@ -1,0 +1,11 @@
+{
+    "name": "jvr",
+    "npmname": "jvr",
+    "umdname": "jvr",
+    "username": "张一凡",
+    "type": "ts",
+    "module": "umd,esm,commonjs",
+    "test": "mocha",
+    "lang": "zh",
+    "version": "1.6.0"
+}
