@@ -1,9 +1,9 @@
-import Jvr from './jvr';
-
+import { mount } from '.';
+import { Root } from './type';
 class Observe<valueType> {
-    public static runtimeComponent: Jvr | null = null;
-    private depencies: Jvr[] = [];
+    private depencies: Root['$root'][] = [];
     private _value: valueType;
+    public static runningDeps: Root['$root'][] = [];
 
     public constructor(initalValue: valueType) {
         this.value = initalValue;
@@ -11,10 +11,10 @@ class Observe<valueType> {
 
     public get value(): valueType {
         if (
-            Observe.runtimeComponent &&
-            this.depencies.indexOf(Observe.runtimeComponent) < 0
+            mount['currentEl'] &&
+            this.depencies.indexOf(mount['currentEl']) < 0
         ) {
-            this.depencies.push(Observe.runtimeComponent);
+            this.depencies.push(mount['currentEl']);
         }
         return this._value;
     }
@@ -22,8 +22,14 @@ class Observe<valueType> {
     public set value(nextValue: valueType) {
         if (this._value !== nextValue) {
             this._value = nextValue;
-            this.depencies.forEach((component: Jvr): void => {
-                component.update();
+            this.depencies.forEach(($root: Root['$root']): void => {
+                const map = $root['eventPool']['propsChange'];
+                map.forEach((fn: Function, $target: Root['$root']): void => {
+                    if (Observe.runningDeps.indexOf($target) >= 0) return;
+                    fn();
+                    Observe.runningDeps.push($target);
+                });
+                Observe.runningDeps = [];
             });
         }
     }
@@ -46,23 +52,4 @@ export function createState(initalStates: object): object {
         }
     }
     return Object.defineProperties({}, target);
-}
-
-interface JvrStateComponent extends Jvr {
-    $state: object;
-}
-
-export function mapState(
-    component: Jvr,
-    state: object,
-    fn: (state: object) => object
-): JvrStateComponent {
-    Observe.runtimeComponent = component;
-    Object.defineProperty(component, '$state', {
-        get(): object {
-            return fn(state);
-        },
-    });
-    Observe.runtimeComponent = null;
-    return component as JvrStateComponent;
 }

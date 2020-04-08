@@ -1,4 +1,6 @@
-## :star: 特性
+# 还在开发中 一切都将是未知的
+
+<!-- ## :star: 特性
 
 - 还在开发中没有特性
 
@@ -75,4 +77,4 @@ $ npm publish
 [CHANGELOG.md](./CHANGELOG.md)
 
 ## :airplane: 计划列表
-[TODO.md](./TODO.md)
+[TODO.md](./TODO.md) -->

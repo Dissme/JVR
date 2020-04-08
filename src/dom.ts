@@ -1,110 +1,114 @@
-import Jvr, { JvrConstructor, JvrComponent } from './jvr';
-import { bounce } from './utils';
 import * as $ from 'jquery';
-import Component from '.';
+import { Root, VitrualNode } from './type';
+import { bounce, debounce } from './utils';
+import { Fragment, mount, diff } from '.';
 
-export const Fragment = Symbol('JvrEmptyTag');
+export const isVNode = {};
 
-type jvrTag = string | symbol | JvrConstructor;
+export function createHtmlElement(
+    tag: string | object = Fragment,
+    props: VitrualNode['props'] = {}
+): Root['$root'] {
+    let $result: Root['$root'];
+    if (tag === Fragment) {
+        $result = $(document.createDocumentFragment());
+        $result['isFragment'] = Fragment;
+    }
+    if (typeof tag === 'string') $result = $(`<${tag}></${tag}>`).attr(props);
+    if (!$result) throw `未知的tag类型:${tag},创建DOM出错`;
+    return $result;
+}
 
-export class JvrNode {
-    public tag: jvrTag;
-    public attr: null | object;
-    public children: (JvrNode | string)[];
-    public id: number;
-    public eventPool: Record<string, Function> = {};
+export function render(
+    component: VitrualNode['component'] | VitrualNode
+): Root {
+    if (typeof component === 'function') {
+        component = {
+            tag: component,
+            props: {},
+            children: [],
+            component,
+            isVNode,
+        };
+    }
+    let node: VitrualNode, $root: Root['$root'];
+    if (typeof component.tag === 'function') {
+        $root = createHtmlElement();
+        node = bounce(component.tag, component.props, component.children);
+    } else {
+        $root = createHtmlElement(component.tag, component.props);
+        node = component;
+    }
+    return { $root, node };
+}
 
-    public static counter: number = 0;
+export function append(
+    $el: Root['$root'],
+    component: VitrualNode['component'] | VitrualNode
+): Root['$root'] {
+    $el['effectDom'] = $el['effectDom'] || [];
+    const { $root, node } = render(component);
 
-    public constructor(
-        tag: jvrTag,
-        attr: null | object,
-        children: (JvrNode | string)[]
-    ) {
-        this.tag = tag;
-        this.attr = attr;
-        this.children = children;
-        this.id = JvrNode.counter++;
-        for (const key in attr) {
-            if (attr.hasOwnProperty(key)) {
-                const res = /^on-([a-z]+)$/.exec(key);
-                const handler = attr[key];
-                if (res && res[1]) {
-                    this.eventPool[res[1]] = handler;
-                }
+    node.children.forEach((child): void => {
+        if ((child as VitrualNode).isVNode === isVNode) {
+            $el['effectDom'].push($root);
+            mount($root, child as VitrualNode);
+        } else {
+            $el['effectDom'].push(child);
+            $root.append(child + '');
+        }
+    });
+
+    $el['eventPool'] = $el['eventPool'] || {};
+    $el['eventPool']['propsChange'] =
+        $el['eventPool']['propsChange'] || new Map();
+    $el['eventPool']['propsChange'].set(
+        $root,
+        debounce((): void => {
+            const effectDom = [...$el['effectDom']];
+            const patches = diff({ $root, node }, component);
+            patches.forEach((fn): void => fn($el, effectDom));
+        })
+    );
+    // $el['vdom'] = node;
+    $el.append($root);
+    return $root;
+}
+
+export function remove(root: Root): Function {
+    return function (): void {};
+}
+
+function insertAfter(current: Root['$root'] | string, target: Root): boolean {
+    let result = false;
+    if (current['isFragment'] === Fragment) {
+        let len = current['effectDom'].length;
+        while (len-- >= 0) {
+            if (insertAfter(current['effectDom'][len], target)) return true;
+        }
+    } else if (typeof current !== 'string') {
+        result = true;
+        this.after(target.$root);
+    }
+    return result;
+}
+
+export function insert(root: Root): Function {
+    return function (effectDom: Root[]): void {
+        const targetEffectDom = this['effectDom'];
+        if (targetEffectDom.indexOf(root) >= 0) return;
+        let index = effectDom.indexOf(root),
+            flag = false;
+        if (index < 0) {
+            flag = insertAfter.call(this, root);
+        } else {
+            let target: Root['$root'] | undefined;
+            while (index++ < effectDom.length) {
+                target = targetEffectDom.find(effectDom[index]);
+                if (target) flag = insertAfter.call(target, root);
+                if (flag) break;
             }
         }
-    }
-}
-
-export function createElement(
-    tag: jvrTag | Function,
-    attr: null | object,
-    ...children: (JvrNode | string)[]
-): JvrNode {
-    if (
-        typeof tag === 'function' &&
-        tag.prototype.isComponent !== JvrComponent
-    ) {
-        const bounceChildren = [];
-        children.forEach((child): void => {
-            if (child instanceof JvrNode) {
-                bounceChildren.push(new Component(attr, [child]));
-            }
-            if (typeof child === 'string') {
-                bounceChildren.push(child);
-            }
-        });
-        return bounce(tag.bind(null, attr, bounceChildren));
-    }
-    return new JvrNode(tag as jvrTag, attr, children);
-}
-
-export function createDOM(
-    tag: jvrTag,
-    attr: object | null
-): JQuery<HTMLElement | DocumentFragment> {
-    let err = null,
-        ele = null;
-    switch (typeof tag) {
-        case 'string':
-            ele = $(`<${tag}></${tag}>`).attr(attr || {});
-            break;
-        // case 'function':
-        //     if (tag.prototype.isComponent === JvrComponent) {
-        //         ele = $(document.createDocumentFragment());
-        //     } else {
-        //         err = '试图实例化未定义的tag类型';
-        //     }
-        //     break;
-        case 'symbol':
-            if (tag === Fragment) {
-                ele = $(document.createDocumentFragment());
-            } else {
-                err = '试图实例化未定义的tag类型';
-            }
-            break;
-        default:
-            err = '试图实例化未定义的tag类型';
-            break;
-    }
-    if (err) throw err;
-    return ele;
-}
-
-export function mount(
-    root: JQuery.Selector | JQuery | HTMLElement | null,
-    component: Jvr | JvrConstructor
-): void {
-    if (!root) root = 'body';
-    const $root = $(root as JQuery.Selector);
-    if (
-        typeof component === 'function' &&
-        component.prototype.isComponent === JvrComponent
-    ) {
-        component = new component(null, []);
-    }
-    component = component as Jvr;
-    component.update();
-    component.mount($root);
+        if (!flag) throw '未找到真实DOM节点,插入节点失败';
+    };
 }
