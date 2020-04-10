@@ -48,14 +48,16 @@ export function append(
 ): Root['$root'] {
     $el['effectDom'] = $el['effectDom'] || [];
     const { $root, node } = render(component);
+    $el['effectDom'].push($root);
 
     node.children.forEach((child): void => {
         if ((child as VitrualNode).isVNode === isVNode) {
-            $el['effectDom'].push($root);
             mount($root, child as VitrualNode);
         } else {
-            $el['effectDom'].push(child);
-            $root.append(child + '');
+            const textNode = $(document.createTextNode(child + ''));
+            $root['effectDom'] = $root['effectDom'] || [];
+            $root.append(textNode);
+            $root['effectDom'].push(textNode);
         }
     });
 
@@ -79,33 +81,37 @@ export function remove(root: Root): Function {
     return function (): void {};
 }
 
-function insertAfter(current: Root['$root'] | string, target: Root): boolean {
+function insertAfter(
+    current: Root['$root'] | JQuery<Text>,
+    target: Root
+): boolean {
     let result = false;
     if (current['isFragment'] === Fragment) {
         let len = current['effectDom'].length;
         while (len-- >= 0) {
             if (insertAfter(current['effectDom'][len], target)) return true;
         }
-    } else if (typeof current !== 'string') {
+    } else {
         result = true;
-        this.after(target.$root);
+        current.after(target.$root);
     }
     return result;
 }
 
 export function insert(root: Root): Function {
-    return function (effectDom: Root[]): void {
-        const targetEffectDom = this['effectDom'];
+    return function ($el: Root['$root'], effectDom: Root[]): void {
+        const targetEffectDom = $el['effectDom'];
         if (targetEffectDom.indexOf(root) >= 0) return;
         let index = effectDom.indexOf(root),
             flag = false;
         if (index < 0) {
-            flag = insertAfter.call(this, root);
+            flag = insertAfter($el, root);
         } else {
-            let target: Root['$root'] | undefined;
+            let target: Root['$root'] | JQuery<Text> | undefined;
             while (index++ < effectDom.length) {
-                target = targetEffectDom.find(effectDom[index]);
-                if (target) flag = insertAfter.call(target, root);
+                // todos: 这里明天改一下
+                target = targetEffectDom.find(target => effectDom[index]);
+                if (target) flag = insertAfter(target, root);
                 if (flag) break;
             }
         }
